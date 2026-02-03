@@ -73,7 +73,7 @@ export default function RegisterScreen() {
 
         <View style={styles.dividerContainer}>
           <View style={styles.line} />
-          <Text style={styles.dividerText}>ou renseignez vos infos.</Text>
+          <Text style={styles.dividerText}>ou renseignez vos infos</Text>
           <View style={styles.line} />
         </View>
 
