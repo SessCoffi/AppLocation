@@ -12,11 +12,13 @@ import {
   Animated,
   PanResponder,
   Dimensions,
+  Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { supabase } from "../../lib/supabase";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 const MODE_STORAGE_KEY = "@user_mode_host";
@@ -50,6 +52,26 @@ export default function ProfileScreen() {
   const toggleMode = async (value: boolean) => {
     setIsHostMode(value);
     await AsyncStorage.setItem(MODE_STORAGE_KEY, JSON.stringify(value));
+  };
+
+  // FONCTION DE DÉCONNEXION
+  const handleSignOut = async () => {
+    Alert.alert("Déconnexion", "Voulez-vous vraiment vous déconnecter ?", [
+      { text: "Annuler", style: "cancel" },
+      {
+        text: "Se déconnecter",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            const { error } = await supabase.auth.signOut();
+            if (error) throw error;
+            // La redirection est gérée automatiquement par l'écouteur dans app/_layout.tsx
+          } catch (error: any) {
+            Alert.alert("Erreur", error.message);
+          }
+        },
+      },
+    ]);
   };
 
   return (
@@ -103,7 +125,6 @@ export default function ProfileScreen() {
                   <Text style={styles.statLabel}>Revenus (FCFA)</Text>
                 </TouchableOpacity>
 
-                {/* CARTE STATISTIQUE -> OUVRE LE MODAL */}
                 <TouchableOpacity
                   style={styles.statCard}
                   onPress={() => setShowAds(true)}
@@ -113,7 +134,6 @@ export default function ProfileScreen() {
                 </TouchableOpacity>
               </View>
 
-              {/* BOUTON LISTE -> RENVOIE À LA PAGE MANAGE ADS */}
               <MenuLink
                 icon="list"
                 title="Mes annonces"
@@ -160,18 +180,17 @@ export default function ProfileScreen() {
           )}
         </View>
 
-        <TouchableOpacity style={styles.logoutBtn}>
+        {/* BOUTON DÉCONNEXION MIS À JOUR */}
+        <TouchableOpacity style={styles.logoutBtn} onPress={handleSignOut}>
           <Text style={styles.logoutText}>Se déconnecter</Text>
         </TouchableOpacity>
       </ScrollView>
 
-      {/* MODAL REVENUS */}
       <RevenueModal
         visible={showRevenues}
         onClose={() => setShowRevenues(false)}
       />
 
-      {/* MODAL ANNONCES */}
       <AdsModal visible={showAds} onClose={() => setShowAds(false)} />
     </View>
   );

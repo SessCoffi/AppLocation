@@ -25,7 +25,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CalendarList, LocaleConfig } from "react-native-calendars";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useFavorites } from "../../context/FavoritesContext";
+import { useFavorites } from "../../context/favorites-context";
 import { Slider } from "@miblanchard/react-native-slider";
 
 const SCREEN_HEIGHT = Dimensions.get("window").height;

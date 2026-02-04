@@ -13,7 +13,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 // Import du contexte pour récupérer les favoris
-import { useFavorites } from "../../context/FavoritesContext";
+import { useFavorites } from "../../context/favorites-context";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 

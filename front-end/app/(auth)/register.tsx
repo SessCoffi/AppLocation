@@ -10,15 +10,22 @@ import {
   KeyboardAvoidingView,
   Platform,
   Image,
+  StatusBar,
+  Alert,
+  ActivityIndicator,
 } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { supabase } from "../../lib/supabase";
 
 export default function RegisterScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
-  // États de base
+  // États du formulaire
+  const [loading, setLoading] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -27,18 +34,117 @@ export default function RegisterScreen() {
   const [neighborhood, setNeighborhood] = useState("");
   const [password, setPassword] = useState("");
 
-  // États KYC (Propriétaire)
+  // États KYC
   const [idCardImage, setIdCardImage] = useState<string | null>(null);
   const [selfieImage, setSelfieImage] = useState<string | null>(null);
 
+  // Fonction pour uploader les images vers Supabase Storage
+  const uploadImage = async (uri: string, folder: string) => {
+    try {
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      const arrayBuffer = await new Response(blob).arrayBuffer();
+
+      const fileExt = uri.split(".").pop();
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+      const filePath = `${folder}/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("kyc-documents")
+        .upload(filePath, arrayBuffer, {
+          contentType: "image/jpeg",
+        });
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage
+        .from("kyc-documents")
+        .getPublicUrl(filePath);
+
+      return data.publicUrl;
+    } catch (error) {
+      console.error("Upload error:", error);
+      return null;
+    }
+  };
+
+  // Logique d'inscription
+  const handleSignUp = async () => {
+    if (!email || !password || !fullName) {
+      Alert.alert(
+        "Champs requis",
+        "Le nom, l'email et le mot de passe sont obligatoires.",
+      );
+      return;
+    }
+
+    setLoading(true);
+    try {
+      let photoPieceUrl = null;
+      let photoFaceUrl = null;
+
+      if (isOwner) {
+        if (!idCardImage || !selfieImage) {
+          throw new Error(
+            "Veuillez fournir les deux photos pour le profil propriétaire.",
+          );
+        }
+
+        photoPieceUrl = await uploadImage(idCardImage, "pieces");
+        photoFaceUrl = await uploadImage(selfieImage, "selfies");
+
+        if (!photoPieceUrl || !photoFaceUrl) {
+          throw new Error(
+            "Échec de l'envoi des photos. Vérifiez votre connexion.",
+          );
+        }
+      }
+
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            full_name: fullName,
+            phone: phone,
+            city: city,
+            neighborhood: neighborhood,
+            is_owner: isOwner,
+            photo_piece_url: photoPieceUrl,
+            photo_face_url: photoFaceUrl,
+          },
+        },
+      });
+
+      if (error) throw error;
+
+      if (data.session) {
+        Alert.alert("Succès", "Compte créé avec succès !");
+        router.replace("/(tabs)");
+      } else {
+        router.push("/(auth)/verify-email");
+      }
+    } catch (error: any) {
+      Alert.alert("Erreur", error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // FONCTION MODIFIÉE : Suppression du redimensionnement
   const takePhoto = async (type: "id" | "selfie") => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== "granted") return;
+    if (status !== "granted") {
+      Alert.alert(
+        "Permission",
+        "Nous avons besoin de l'accès à l'appareil photo.",
+      );
+      return;
+    }
 
     const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: type === "id",
-      aspect: [4, 3],
-      quality: 0.7,
+      allowsEditing: false, // Désactive le mode édition/recadrage
+      quality: 0.7, // Légère augmentation de qualité puisqu'on ne recadre plus
     });
 
     if (!result.canceled) {
@@ -47,142 +153,169 @@ export default function RegisterScreen() {
     }
   };
 
-  const handleRegister = () => {
-    // Logique d'envoi au backend (envoi du code au Gmail)
-    router.push("/verify-email");
-  };
-
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      style={styles.container}
+    <View
+      style={[
+        styles.container,
+        { paddingTop: insets.top, paddingBottom: insets.bottom },
+      ]}
     >
-      <Stack.Screen
-        options={{ headerTitle: "Créer un compte", headerShadowVisible: false }}
+      <StatusBar
+        barStyle="dark-content"
+        translucent
+        backgroundColor="transparent"
       />
+      <Stack.Screen options={{ headerShown: false }} />
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scroll}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={{ flex: 1 }}
       >
-        {/* Social Login */}
-        <TouchableOpacity style={styles.googleBtn}>
-          <Ionicons name="logo-google" size={20} color="#EA4335" />
-          <Text style={styles.googleBtnText}>S'inscrire avec Google</Text>
-        </TouchableOpacity>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scroll}
+        >
+          <Text style={styles.pageTitle}>Créer un compte</Text>
 
-        <View style={styles.dividerContainer}>
-          <View style={styles.line} />
-          <Text style={styles.dividerText}>ou renseignez vos infos</Text>
-          <View style={styles.line} />
-        </View>
+          <TouchableOpacity style={styles.googleBtn}>
+            <Ionicons name="logo-google" size={20} color="#EA4335" />
+            <Text style={styles.googleBtnText}>S'inscrire avec Google</Text>
+          </TouchableOpacity>
 
-        {/* Formulaire de base */}
-        <InputBox
-          label="Nom complet"
-          value={fullName}
-          onChange={setFullName}
-          icon="person-outline"
-        />
-        <InputBox
-          label="Email"
-          value={email}
-          onChange={setEmail}
-          icon="mail-outline"
-          keyboardType="email-address"
-        />
-        <InputBox
-          label="Téléphone"
-          value={phone}
-          onChange={setPhone}
-          icon="call-outline"
-          keyboardType="phone-pad"
-        />
-
-        <View style={styles.row}>
-          <View style={{ flex: 1, marginRight: 10 }}>
-            <InputBox
-              label="Ville"
-              value={city}
-              onChange={setCity}
-              icon="location-outline"
-            />
+          <View style={styles.dividerContainer}>
+            <View style={styles.line} />
+            <Text style={styles.dividerText}>ou renseignez vos infos</Text>
+            <View style={styles.line} />
           </View>
-          <View style={{ flex: 1 }}>
-            <InputBox
-              label="Quartier"
-              value={neighborhood}
-              onChange={setNeighborhood}
-              icon="business-outline"
-            />
-          </View>
-        </View>
 
-        <InputBox
-          label="Mot de passe"
-          value={password}
-          onChange={setPassword}
-          icon="lock-closed-outline"
-          secure
-        />
-
-        {/* Toggle Propriétaire */}
-        <View style={styles.ownerSwitchContainer}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.ownerTitle}>Je veux être Propriétaire</Text>
-            <Text style={styles.ownerSub}>
-              Nécessite une vérification d'identité
-            </Text>
-          </View>
-          <Switch
-            value={isOwner}
-            onValueChange={setIsOwner}
-            trackColor={{ true: "#000" }}
+          <InputBox
+            label="Nom complet"
+            value={fullName}
+            onChange={setFullName}
+            icon="person-outline"
           />
-        </View>
+          <InputBox
+            label="Email"
+            value={email}
+            onChange={setEmail}
+            icon="mail-outline"
+            keyboardType="email-address"
+          />
+          <InputBox
+            label="Téléphone"
+            value={phone}
+            onChange={setPhone}
+            icon="call-outline"
+            keyboardType="phone-pad"
+          />
 
-        {/* Section KYC (Visible seulement si isOwner est vrai) */}
-        {isOwner && (
-          <View style={styles.kycSection}>
-            <Text style={styles.kycTitle}>Vérification d'identité</Text>
-
-            <View style={styles.photoGrid}>
-              <TouchableOpacity
-                style={styles.photoBox}
-                onPress={() => takePhoto("id")}
-              >
-                {idCardImage ? (
-                  <Image source={{ uri: idCardImage }} style={styles.preview} />
-                ) : (
-                  <>
-                    <Ionicons name="card-outline" size={30} color="#999" />
-                    <Text style={styles.photoLabel}>Photo de la pièce</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.photoBox}
-                onPress={() => takePhoto("selfie")}
-              >
-                {selfieImage ? (
-                  <Image source={{ uri: selfieImage }} style={styles.preview} />
-                ) : (
-                  <>
-                    <Ionicons name="camera-outline" size={30} color="#999" />
-                    <Text style={styles.photoLabel}>Photo de face</Text>
-                  </>
-                )}
-              </TouchableOpacity>
+          <View style={styles.row}>
+            <View style={{ flex: 1, marginRight: 10 }}>
+              <InputBox
+                label="Ville"
+                value={city}
+                onChange={setCity}
+                icon="location-outline"
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <InputBox
+                label="Quartier"
+                value={neighborhood}
+                onChange={setNeighborhood}
+                icon="business-outline"
+              />
             </View>
           </View>
-        )}
 
-        <TouchableOpacity style={styles.mainBtn} onPress={handleRegister}>
-          <Text style={styles.mainBtnText}>S'inscrire</Text>
-        </TouchableOpacity>
-      </ScrollView>
-    </KeyboardAvoidingView>
+          <InputBox
+            label="Mot de passe"
+            value={password}
+            onChange={setPassword}
+            icon="lock-closed-outline"
+            secure
+          />
+
+          <View style={styles.ownerSwitchContainer}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.ownerTitle}>Je veux être Propriétaire</Text>
+              <Text style={styles.ownerSub}>
+                Nécessite une vérification d'identité
+              </Text>
+            </View>
+            <Switch
+              value={isOwner}
+              onValueChange={setIsOwner}
+              ios_backgroundColor="#E9E9E9"
+              trackColor={{ false: "#E9E9E9", true: "#D1D1D1" }}
+              thumbColor={isOwner ? "#717171" : "#F4F4F4"}
+            />
+          </View>
+
+          {isOwner && (
+            <View style={styles.kycSection}>
+              <Text style={styles.kycTitle}>Vérification d'identité</Text>
+              <View style={styles.photoGrid}>
+                <TouchableOpacity
+                  style={styles.photoBox}
+                  onPress={() => takePhoto("id")}
+                >
+                  {idCardImage ? (
+                    <Image
+                      source={{ uri: idCardImage }}
+                      style={styles.preview}
+                    />
+                  ) : (
+                    <>
+                      <Ionicons name="card-outline" size={30} color="#999" />
+                      <Text style={styles.photoLabel}>Photo de la pièce</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.photoBox}
+                  onPress={() => takePhoto("selfie")}
+                >
+                  {selfieImage ? (
+                    <Image
+                      source={{ uri: selfieImage }}
+                      style={styles.preview}
+                    />
+                  ) : (
+                    <>
+                      <Ionicons name="camera-outline" size={30} color="#999" />
+                      <Text style={styles.photoLabel}>Photo de face</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          <TouchableOpacity
+            style={styles.mainBtn}
+            onPress={handleSignUp}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color="white" />
+            ) : (
+              <Text style={styles.mainBtnText}>S'inscrire</Text>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={styles.backLink}
+          >
+            <Text style={styles.backLinkText}>
+              Déjà un compte ? <Text style={styles.bold}>Se connecter</Text>
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -206,6 +339,7 @@ const InputBox = ({
         keyboardType={keyboardType}
         placeholder={`Votre ${label.toLowerCase()}`}
         placeholderTextColor="#CCC"
+        autoCapitalize="none"
       />
     </View>
   </View>
@@ -214,6 +348,12 @@ const InputBox = ({
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "white" },
   scroll: { padding: 25 },
+  pageTitle: {
+    fontSize: 28,
+    fontWeight: "800",
+    color: "#000",
+    marginBottom: 25,
+  },
   googleBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -248,7 +388,7 @@ const styles = StyleSheet.create({
     paddingBottom: 5,
   },
   inputIcon: { marginRight: 10 },
-  input: { flex: 1, fontSize: 15, fontWeight: "500", color: "#000" },
+  input: { flex: 1, fontSize: 15, color: "#000" },
   row: { flexDirection: "row" },
   ownerSwitchContainer: {
     flexDirection: "row",
@@ -283,6 +423,11 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: "center",
     marginTop: 30,
+    minHeight: 56,
+    justifyContent: "center",
   },
   mainBtnText: { color: "white", fontWeight: "700", fontSize: 16 },
+  backLink: { marginTop: 20, marginBottom: 40, alignItems: "center" },
+  backLinkText: { color: "#999", fontSize: 14 },
+  bold: { color: "#000", fontWeight: "700" },
 });
