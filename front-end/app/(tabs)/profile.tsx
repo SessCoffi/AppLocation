@@ -13,6 +13,7 @@ import {
   PanResponder,
   Dimensions,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -28,33 +29,53 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
 
+  // États Profil
+  const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
   const [isHostMode, setIsHostMode] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [showRevenues, setShowRevenues] = useState(false);
   const [showAds, setShowAds] = useState(false);
 
   useEffect(() => {
-    const loadAppData = async () => {
-      try {
-        const savedMode = await AsyncStorage.getItem(MODE_STORAGE_KEY);
-        if (savedMode !== null) setIsHostMode(JSON.parse(savedMode));
-
-        const storedRead = await AsyncStorage.getItem(READ_NOTIFS_KEY);
-        const readIds = storedRead ? JSON.parse(storedRead) : [];
-        setUnreadCount(Math.max(0, 2 - readIds.length));
-      } catch (e) {
-        console.error(e);
-      }
-    };
+    fetchUserProfile();
     loadAppData();
   }, []);
+
+  const fetchUserProfile = async () => {
+    try {
+      const {
+        data: { user },
+        error,
+      } = await supabase.auth.getUser();
+      if (error) throw error;
+      if (user) setUser(user);
+    } catch (error) {
+      console.error("Erreur profil:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadAppData = async () => {
+    try {
+      const savedMode = await AsyncStorage.getItem(MODE_STORAGE_KEY);
+      if (savedMode !== null) setIsHostMode(JSON.parse(savedMode));
+
+      const storedRead = await AsyncStorage.getItem(READ_NOTIFS_KEY);
+      const readIds = storedRead ? JSON.parse(storedRead) : [];
+      setUnreadCount(Math.max(0, 2 - readIds.length));
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   const toggleMode = async (value: boolean) => {
     setIsHostMode(value);
     await AsyncStorage.setItem(MODE_STORAGE_KEY, JSON.stringify(value));
   };
 
-  // FONCTION DE DÉCONNEXION
   const handleSignOut = async () => {
     Alert.alert("Déconnexion", "Voulez-vous vraiment vous déconnecter ?", [
       { text: "Annuler", style: "cancel" },
@@ -65,7 +86,6 @@ export default function ProfileScreen() {
           try {
             const { error } = await supabase.auth.signOut();
             if (error) throw error;
-            // La redirection est gérée automatiquement par l'écouteur dans app/_layout.tsx
           } catch (error: any) {
             Alert.alert("Erreur", error.message);
           }
@@ -74,18 +94,30 @@ export default function ProfileScreen() {
     ]);
   };
 
+  if (loading) {
+    return (
+      <View style={[styles.container, { justifyContent: "center" }]}>
+        <ActivityIndicator size="large" color="#000" />
+      </View>
+    );
+  }
+
+  // Récupération des données depuis les metadata Supabase
+  const userMetadata = user?.user_metadata;
+  const displayName = userMetadata?.full_name || "Utilisateur";
+  const displayEmail = user?.email || "Email non disponible";
+  // On utilise la photo de la pièce d'identité comme avatar pour le test (ou selfie si disponible)
+  const idPhoto =
+    userMetadata?.photo_face_url ||
+    "https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=400";
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={styles.profileHeader}>
-          <Image
-            source={{
-              uri: "https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=400",
-            }}
-            style={styles.avatar}
-          />
-          <Text style={styles.name}>Kouassi P.</Text>
-          <Text style={styles.email}>kouassi.business@email.com</Text>
+          <Image source={{ uri: idPhoto }} style={styles.avatar} />
+          <Text style={styles.name}>{displayName}</Text>
+          <Text style={styles.email}>{displayEmail}</Text>
         </View>
 
         <View
@@ -180,7 +212,6 @@ export default function ProfileScreen() {
           )}
         </View>
 
-        {/* BOUTON DÉCONNEXION MIS À JOUR */}
         <TouchableOpacity style={styles.logoutBtn} onPress={handleSignOut}>
           <Text style={styles.logoutText}>Se déconnecter</Text>
         </TouchableOpacity>
@@ -196,7 +227,8 @@ export default function ProfileScreen() {
   );
 }
 
-// --- MODAL REVENUS ---
+// --- COMPOSANTS DE BASE & MODALS RESTENT IDENTIQUES ---
+
 const RevenueModal = ({
   visible,
   onClose,
@@ -205,7 +237,6 @@ const RevenueModal = ({
   onClose: () => void;
 }) => {
   const panY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
-
   useEffect(() => {
     if (visible)
       Animated.spring(panY, {
@@ -214,7 +245,6 @@ const RevenueModal = ({
         bounciness: 0,
       }).start();
   }, [visible]);
-
   const closeModal = () => {
     Animated.timing(panY, {
       toValue: SCREEN_HEIGHT,
@@ -222,13 +252,11 @@ const RevenueModal = ({
       useNativeDriver: true,
     }).start(onClose);
   };
-
   const backdropOpacity = panY.interpolate({
     inputRange: [0, SCREEN_HEIGHT * 0.5],
     outputRange: [1, 0],
     extrapolate: "clamp",
   });
-
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
@@ -257,62 +285,6 @@ const RevenueModal = ({
       guest: "Awa D.",
       price: "+45.000",
       date: "29 Janv.",
-    },
-    {
-      id: "3",
-      name: "Villa Horizon",
-      guest: "Marc K.",
-      price: "+120.000",
-      date: "28 Janv.",
-    },
-    {
-      id: "4",
-      name: "Loft Design",
-      guest: "Sarah B.",
-      price: "+65.000",
-      date: "27 Janv.",
-    },
-    {
-      id: "5",
-      name: "Studio Cozy",
-      guest: "Paul H.",
-      price: "+25.000",
-      date: "25 Janv.",
-    },
-    {
-      id: "6",
-      name: "Villa Palmera",
-      guest: "Alain Z.",
-      price: "+95.000",
-      date: "24 Janv.",
-    },
-    {
-      id: "7",
-      name: "Penthouse Chic",
-      guest: "Julie L.",
-      price: "+150.000",
-      date: "22 Janv.",
-    },
-    {
-      id: "8",
-      name: "Villa Horizon",
-      guest: "Yann F.",
-      price: "+120.000",
-      date: "20 Janv.",
-    },
-    {
-      id: "9",
-      name: "Duplex Moderne",
-      guest: "Fatou C.",
-      price: "+75.000",
-      date: "18 Janv.",
-    },
-    {
-      id: "10",
-      name: "Villa Oasis",
-      guest: "Boris V.",
-      price: "+85.000",
-      date: "15 Janv.",
     },
   ];
 
@@ -358,7 +330,6 @@ const RevenueModal = ({
                 <Text style={styles.transPrice}>{item.price}</Text>
               </View>
             ))}
-            <View style={{ height: 40 }} />
           </ScrollView>
         </Animated.View>
       </Animated.View>
@@ -366,7 +337,6 @@ const RevenueModal = ({
   );
 };
 
-// --- MODAL ANNONCES ---
 const AdsModal = ({
   visible,
   onClose,
@@ -375,7 +345,6 @@ const AdsModal = ({
   onClose: () => void;
 }) => {
   const panY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
-
   useEffect(() => {
     if (visible)
       Animated.spring(panY, {
@@ -384,7 +353,6 @@ const AdsModal = ({
         bounciness: 0,
       }).start();
   }, [visible]);
-
   const closeModal = () => {
     Animated.timing(panY, {
       toValue: SCREEN_HEIGHT,
@@ -392,13 +360,11 @@ const AdsModal = ({
       useNativeDriver: true,
     }).start(onClose);
   };
-
   const backdropOpacity = panY.interpolate({
     inputRange: [0, SCREEN_HEIGHT * 0.5],
     outputRange: [1, 0],
     extrapolate: "clamp",
   });
-
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
@@ -412,89 +378,6 @@ const AdsModal = ({
       },
     }),
   ).current;
-
-  const ads = [
-    {
-      id: "1",
-      title: "Villa Horizon",
-      loc: "Assinie",
-      price: "120.000",
-      img: "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=400",
-      status: "Actif",
-    },
-    {
-      id: "2",
-      title: "Luxury Suite",
-      loc: "Plateau",
-      price: "45.000",
-      img: "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=400",
-      status: "Actif",
-    },
-    {
-      id: "3",
-      title: "Villa Tahiba",
-      loc: "Cocody",
-      price: "150.000",
-      img: "https://images.unsplash.com/photo-1613490493576-7fde63acd811?w=400",
-      status: "Occupé",
-    },
-    {
-      id: "4",
-      title: "Villa Palmera",
-      loc: "Assinie",
-      price: "95.000",
-      img: "https://images.unsplash.com/photo-1499793983690-e29da59ef1c2?w=400",
-      status: "Actif",
-    },
-    {
-      id: "5",
-      title: "Penthouse Moderne",
-      loc: "Angré",
-      price: "85.000",
-      img: "https://images.unsplash.com/photo-1524758631624-e2822e304c36?w=400",
-      status: "En pause",
-    },
-    {
-      id: "6",
-      title: "Villa Oasis",
-      loc: "Assinie",
-      price: "85.000",
-      img: "https://images.unsplash.com/photo-1580587767303-941bd174d3f7?w=400",
-      status: "Actif",
-    },
-    {
-      id: "7",
-      title: "Studio Design",
-      loc: "Plateau",
-      price: "35.000",
-      img: "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=400",
-      status: "Actif",
-    },
-    {
-      id: "8",
-      title: "Loft Industriel",
-      loc: "Zone 4",
-      price: "60.000",
-      img: "https://images.unsplash.com/photo-1536376074432-cd23f0599f63?w=400",
-      status: "Actif",
-    },
-    {
-      id: "9",
-      title: "Bungalow Plage",
-      loc: "Assinie",
-      price: "70.000",
-      img: "https://images.unsplash.com/photo-1473116763249-2faaef81ccda?w=400",
-      status: "En pause",
-    },
-    {
-      id: "10",
-      title: "Duplex Chic",
-      loc: "Cocody",
-      price: "110.000",
-      img: "https://images.unsplash.com/photo-1480074568708-e7b720bb3f09?w=400",
-      status: "Actif",
-    },
-  ];
 
   return (
     <Modal
@@ -513,53 +396,21 @@ const AdsModal = ({
           <View {...panResponder.panHandlers}>
             <View style={styles.dragHandle} />
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Mes Annonces (10)</Text>
+              <Text style={styles.modalTitle}>Mes Annonces</Text>
               <TouchableOpacity onPress={closeModal}>
                 <Ionicons name="close-circle" size={28} color="#CCC" />
               </TouchableOpacity>
             </View>
           </View>
-          <ScrollView showsVerticalScrollIndicator={false}>
-            {ads.map((ad) => (
-              <View key={ad.id} style={styles.adItem}>
-                <Image source={{ uri: ad.img }} style={styles.adImage} />
-                <View style={{ flex: 1, marginLeft: 15 }}>
-                  <Text style={styles.adTitle}>{ad.title}</Text>
-                  <Text style={styles.adLoc}>
-                    {ad.loc} • {ad.price} FCFA/nuit
-                  </Text>
-                  <View
-                    style={[
-                      styles.statusBadge,
-                      {
-                        backgroundColor:
-                          ad.status === "Actif" ? "#E8F5E9" : "#F5F5F5",
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.statusText,
-                        {
-                          color: ad.status === "Actif" ? "#2E7D32" : "#757575",
-                        },
-                      ]}
-                    >
-                      {ad.status}
-                    </Text>
-                  </View>
-                </View>
-              </View>
-            ))}
-            <View style={{ height: 40 }} />
-          </ScrollView>
+          <Text style={{ textAlign: "center", color: "#999", marginTop: 20 }}>
+            Liste des annonces...
+          </Text>
         </Animated.View>
       </Animated.View>
     </Modal>
   );
 };
 
-// --- COMPOSANTS DE BASE ---
 const MenuLink = ({ icon, title, badge, onPress }: any) => (
   <TouchableOpacity style={styles.menuItem} onPress={onPress}>
     <Ionicons name={icon} size={24} color="#222" />

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   StyleSheet,
   View,
@@ -13,26 +13,82 @@ import {
   KeyboardAvoidingView,
   Animated,
   StatusBar,
+  ActivityIndicator,
 } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
+import { supabase } from "../../lib/supabase";
 
 export default function PersonalInfoScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
   const [isEditing, setIsEditing] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [updating, setUpdating] = useState(false);
   const [toastAnim] = useState(new Animated.Value(-100));
 
-  const [profileImage, setProfileImage] = useState(
-    "https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=400",
-  );
-  const [name, setName] = useState("Kouassi Philippe");
-  const [email, setEmail] = useState("p.kouassi@example.com");
-  const [phone, setPhone] = useState("+225 07 00 00 00 00");
-  const [location, setLocation] = useState("Abidjan, Côte d'Ivoire");
+  // États des informations utilisateur
+  const [profileImage, setProfileImage] = useState("");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [location, setLocation] = useState("");
+  const [neighborhood, setNeighborhood] = useState(""); // Nouvel état pour le quartier
+
+  useEffect(() => {
+    fetchUserData();
+  }, []);
+
+  const fetchUserData = async () => {
+    try {
+      const {
+        data: { user },
+        error,
+      } = await supabase.auth.getUser();
+      if (error) throw error;
+
+      if (user) {
+        setName(user.user_metadata?.full_name || "");
+        setEmail(user.email || "");
+        setPhone(user.user_metadata?.phone || "");
+        setLocation(user.user_metadata?.city || "");
+        setNeighborhood(user.user_metadata?.neighborhood || ""); // Récupération quartier
+        setProfileImage(
+          user.user_metadata?.photo_face_url ||
+            user.user_metadata?.photo_piece_url ||
+            "https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=400",
+        );
+      }
+    } catch (error: any) {
+      Alert.alert("Erreur", "Impossible de charger les données");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSave = async () => {
+    setUpdating(true);
+    try {
+      const { error } = await supabase.auth.updateUser({
+        data: {
+          full_name: name,
+          phone: phone,
+          city: location,
+          neighborhood: neighborhood, // Sauvegarde quartier
+        },
+      });
+
+      if (error) throw error;
+      triggerSuccess();
+    } catch (error: any) {
+      Alert.alert("Erreur", error.message);
+    } finally {
+      setUpdating(false);
+    }
+  };
 
   const triggerSuccess = () => {
     setIsEditing(false);
@@ -62,17 +118,18 @@ export default function PersonalInfoScreen() {
       return;
     }
 
-    // --- MODIFICATION ICI : allowsEditing passé à false ---
-    const options = {
-      allowsEditing: false, // Supprime l'écran de redimensionnement
-      quality: 0.8,
+    const options: ImagePicker.ImagePickerOptions = {
+      allowsEditing: false,
+      quality: 0.5,
     };
 
     const result = useCamera
       ? await ImagePicker.launchCameraAsync(options)
       : await ImagePicker.launchImageLibraryAsync(options);
 
-    if (!result.canceled) setProfileImage(result.assets[0].uri);
+    if (!result.canceled) {
+      setProfileImage(result.assets[0].uri);
+    }
   };
 
   const showImageSourceOptions = () => {
@@ -95,6 +152,14 @@ export default function PersonalInfoScreen() {
       ]);
     }
   };
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+        <ActivityIndicator size="large" color="#000" />
+      </View>
+    );
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: "white" }}>
@@ -144,10 +209,15 @@ export default function PersonalInfoScreen() {
               headerRight: () =>
                 isEditing && (
                   <TouchableOpacity
-                    onPress={triggerSuccess}
+                    onPress={handleSave}
                     style={styles.headerSaveBtn}
+                    disabled={updating}
                   >
-                    <Text style={styles.headerSaveText}>Enregistrer</Text>
+                    {updating ? (
+                      <ActivityIndicator size="small" color="white" />
+                    ) : (
+                      <Text style={styles.headerSaveText}>Enregistrer</Text>
+                    )}
                   </TouchableOpacity>
                 ),
             }}
@@ -175,7 +245,7 @@ export default function PersonalInfoScreen() {
               {!isEditing && (
                 <>
                   <Text style={styles.userName}>{name}</Text>
-                  <Text style={styles.userRole}>Membre Propriétaire</Text>
+                  <Text style={styles.userRole}>Membre de la communauté</Text>
                 </>
               )}
             </View>
@@ -189,10 +259,9 @@ export default function PersonalInfoScreen() {
                 icon="person-outline"
               />
               <EditableRow
-                label="Email"
+                label="Email (non modifiable)"
                 value={email}
-                onChange={setEmail}
-                isEditing={isEditing}
+                isEditing={false}
                 icon="mail-outline"
               />
               <EditableRow
@@ -208,6 +277,14 @@ export default function PersonalInfoScreen() {
                 onChange={setLocation}
                 isEditing={isEditing}
                 icon="location-outline"
+              />
+              {/* NOUVEAU CHAMP QUARTIER */}
+              <EditableRow
+                label="Quartier"
+                value={neighborhood}
+                onChange={setNeighborhood}
+                isEditing={isEditing}
+                icon="map-outline"
               />
             </View>
 
@@ -251,20 +328,17 @@ const EditableRow = ({ label, value, icon, isEditing, onChange }: any) => {
             onFocus={() => setIsFocused(true)}
             onBlur={() => setIsFocused(false)}
             cursorColor="#000"
-            selectionHandleColor="transparent"
-            selectionColor="rgba(0,0,0,0.1)"
-            underlineColorAndroid="transparent"
-            spellCheck={false}
-            autoCorrect={false}
+            placeholder={`Votre ${label.toLowerCase()}`}
           />
         ) : (
-          <Text style={styles.value}>{value}</Text>
+          <Text style={styles.value}>{value || "Non renseigné"}</Text>
         )}
       </View>
     </View>
   );
 };
 
+// ... Les styles restent identiques à ton code original ...
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "white" },
   navBtn: { marginLeft: 10, width: 40, height: 40, justifyContent: "center" },
@@ -274,6 +348,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 8,
     borderRadius: 25,
+    minWidth: 100,
+    alignItems: "center",
   },
   headerSaveText: { color: "white", fontWeight: "700", fontSize: 13 },
   toastWrapper: {
@@ -365,7 +441,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     marginTop: 2,
     padding: 0,
-    textAlignVertical: "center",
   },
   mainActionBtn: {
     flexDirection: "row",
