@@ -15,9 +15,8 @@ import { supabase } from "../../lib/supabase";
 
 export default function VerifyEmailScreen() {
   const router = useRouter();
-  // Récupère l'email passé en paramètre depuis la page Register
   const { email } = useLocalSearchParams<{ email: string }>();
-  
+
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -30,17 +29,16 @@ export default function VerifyEmailScreen() {
     setLoading(true);
     try {
       const { data, error } = await supabase.auth.verifyOtp({
-        email: email,
+        email: email || "",
         token: code,
-        type: 'signup',
+        type: "signup",
       });
 
       if (error) throw error;
 
       if (data.session) {
         Alert.alert("Succès", "Votre compte est validé !");
-        // Redirige vers la page d'accueil ou le dashboard
-        router.replace("/"); 
+        router.replace("/(tabs)");
       }
     } catch (error: any) {
       Alert.alert("Erreur de vérification", error.message);
@@ -50,8 +48,9 @@ export default function VerifyEmailScreen() {
   };
 
   const resendCode = async () => {
+    if (!email) return;
     const { error } = await supabase.auth.resend({
-      type: 'signup',
+      type: "signup",
       email: email,
     });
     if (error) Alert.alert("Erreur", error.message);
@@ -59,12 +58,13 @@ export default function VerifyEmailScreen() {
   };
 
   return (
-    <KeyboardAvoidingView 
+    <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       style={styles.container}
     >
-      <Stack.Screen options={{ headerTitle: "Vérification", headerShadowVisible: false }} />
-      
+      <Stack.Screen
+        options={{ headerTitle: "Vérification", headerShadowVisible: false }}
+      />
       <View style={styles.content}>
         <Text style={styles.title}>Vérifiez votre boîte mail</Text>
         <Text style={styles.sub}>
@@ -82,8 +82,8 @@ export default function VerifyEmailScreen() {
           autoFocus
         />
 
-        <TouchableOpacity 
-          style={[styles.mainBtn, loading && { backgroundColor: "#444" }]} 
+        <TouchableOpacity
+          style={styles.mainBtn}
           onPress={handleVerify}
           disabled={loading}
         >
@@ -95,7 +95,10 @@ export default function VerifyEmailScreen() {
         </TouchableOpacity>
 
         <TouchableOpacity onPress={resendCode} style={styles.resendBtn}>
-          <Text style={styles.resendText}>Je n'ai pas reçu de code ? <Text style={{fontWeight: '700'}}>Renvoyer</Text></Text>
+          <Text style={styles.resendText}>
+            Je n'ai pas reçu de code ?{" "}
+            <Text style={{ fontWeight: "700" }}>Renvoyer</Text>
+          </Text>
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -104,29 +107,35 @@ export default function VerifyEmailScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "white" },
-  content: { padding: 25, alignItems: 'center', paddingTop: 50 },
+  content: { padding: 25, alignItems: "center", paddingTop: 50 },
   title: { fontSize: 22, fontWeight: "800", marginBottom: 10 },
-  sub: { fontSize: 14, color: "#777", textAlign: 'center', lineHeight: 20, marginBottom: 30 },
+  sub: {
+    fontSize: 14,
+    color: "#777",
+    textAlign: "center",
+    lineHeight: 20,
+    marginBottom: 30,
+  },
   emailText: { color: "#000", fontWeight: "600" },
   otpInput: {
-    width: '100%',
-    backgroundColor: '#F5F5F5',
+    width: "100%",
+    backgroundColor: "#F5F5F5",
     padding: 20,
     borderRadius: 15,
     fontSize: 28,
-    fontWeight: '800',
-    textAlign: 'center',
+    fontWeight: "800",
+    textAlign: "center",
     letterSpacing: 10,
-    marginBottom: 30
+    marginBottom: 30,
   },
   mainBtn: {
     backgroundColor: "#000",
-    width: '100%',
+    width: "100%",
     padding: 18,
     borderRadius: 20,
     alignItems: "center",
   },
   mainBtnText: { color: "white", fontWeight: "700", fontSize: 16 },
   resendBtn: { marginTop: 25 },
-  resendText: { color: "#999", fontSize: 13 }
+  resendText: { color: "#999", fontSize: 13 },
 });

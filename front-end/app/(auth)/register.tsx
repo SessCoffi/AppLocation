@@ -24,7 +24,6 @@ export default function RegisterScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  // États du formulaire
   const [loading, setLoading] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
   const [fullName, setFullName] = useState("");
@@ -33,34 +32,26 @@ export default function RegisterScreen() {
   const [city, setCity] = useState("");
   const [neighborhood, setNeighborhood] = useState("");
   const [password, setPassword] = useState("");
-
-  // États KYC
   const [idCardImage, setIdCardImage] = useState<string | null>(null);
   const [selfieImage, setSelfieImage] = useState<string | null>(null);
 
-  // Fonction pour uploader les images vers Supabase Storage
   const uploadImage = async (uri: string, folder: string) => {
     try {
       const response = await fetch(uri);
       const blob = await response.blob();
       const arrayBuffer = await new Response(blob).arrayBuffer();
-
       const fileExt = uri.split(".").pop();
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
       const filePath = `${folder}/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
         .from("kyc-documents")
-        .upload(filePath, arrayBuffer, {
-          contentType: "image/jpeg",
-        });
+        .upload(filePath, arrayBuffer, { contentType: "image/jpeg" });
 
       if (uploadError) throw uploadError;
-
       const { data } = supabase.storage
         .from("kyc-documents")
         .getPublicUrl(filePath);
-
       return data.publicUrl;
     } catch (error) {
       console.error("Upload error:", error);
@@ -68,7 +59,6 @@ export default function RegisterScreen() {
     }
   };
 
-  // Logique d'inscription
   const handleSignUp = async () => {
     if (!email || !password || !fullName) {
       Alert.alert(
@@ -89,15 +79,8 @@ export default function RegisterScreen() {
             "Veuillez fournir les deux photos pour le profil propriétaire.",
           );
         }
-
         photoPieceUrl = await uploadImage(idCardImage, "pieces");
         photoFaceUrl = await uploadImage(selfieImage, "selfies");
-
-        if (!photoPieceUrl || !photoFaceUrl) {
-          throw new Error(
-            "Échec de l'envoi des photos. Vérifiez votre connexion.",
-          );
-        }
       }
 
       const { data, error } = await supabase.auth.signUp({
@@ -118,11 +101,13 @@ export default function RegisterScreen() {
 
       if (error) throw error;
 
-      if (data.session) {
-        Alert.alert("Succès", "Compte créé avec succès !");
-        router.replace("/(tabs)");
+      if (data.user && !data.session) {
+        router.push({
+          pathname: "/(auth)/verify-email",
+          params: { email: email },
+        });
       } else {
-        router.push("/(auth)/verify-email");
+        router.replace("/(tabs)");
       }
     } catch (error: any) {
       Alert.alert("Erreur", error.message);
@@ -131,22 +116,16 @@ export default function RegisterScreen() {
     }
   };
 
-  // FONCTION MODIFIÉE : Suppression du redimensionnement
   const takePhoto = async (type: "id" | "selfie") => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== "granted") {
-      Alert.alert(
-        "Permission",
-        "Nous avons besoin de l'accès à l'appareil photo.",
-      );
+      Alert.alert("Permission", "Accès appareil photo requis.");
       return;
     }
-
     const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: false, // Désactive le mode édition/recadrage
-      quality: 0.7, // Légère augmentation de qualité puisqu'on ne recadre plus
+      allowsEditing: false,
+      quality: 0.7,
     });
-
     if (!result.canceled) {
       if (type === "id") setIdCardImage(result.assets[0].uri);
       else setSelfieImage(result.assets[0].uri);
@@ -166,7 +145,6 @@ export default function RegisterScreen() {
         backgroundColor="transparent"
       />
       <Stack.Screen options={{ headerShown: false }} />
-
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}
@@ -176,17 +154,9 @@ export default function RegisterScreen() {
           contentContainerStyle={styles.scroll}
         >
           <Text style={styles.pageTitle}>Créer un compte</Text>
-
-          <TouchableOpacity style={styles.googleBtn}>
-            <Ionicons name="logo-google" size={20} color="#EA4335" />
-            <Text style={styles.googleBtnText}>S'inscrire avec Google</Text>
-          </TouchableOpacity>
-
-          <View style={styles.dividerContainer}>
-            <View style={styles.line} />
-            <Text style={styles.dividerText}>ou renseignez vos infos</Text>
-            <View style={styles.line} />
-          </View>
+          <Text style={styles.pageSubtitle}>
+            Remplissez les informations ci-dessous pour rejoindre l'aventure.
+          </Text>
 
           <InputBox
             label="Nom complet"
@@ -272,7 +242,6 @@ export default function RegisterScreen() {
                     </>
                   )}
                 </TouchableOpacity>
-
                 <TouchableOpacity
                   style={styles.photoBox}
                   onPress={() => takePhoto("selfie")}
@@ -352,26 +321,9 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: "800",
     color: "#000",
-    marginBottom: 25,
+    marginBottom: 8,
   },
-  googleBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 15,
-    borderRadius: 15,
-    borderWidth: 1,
-    borderColor: "#EEE",
-    marginBottom: 20,
-  },
-  googleBtnText: { marginLeft: 10, fontWeight: "600", color: "#000" },
-  dividerContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 20,
-  },
-  line: { flex: 1, height: 1, backgroundColor: "#EEE" },
-  dividerText: { marginHorizontal: 10, color: "#AAA", fontSize: 12 },
+  pageSubtitle: { fontSize: 14, color: "#999", marginBottom: 30 },
   inputGroup: { marginBottom: 18 },
   label: {
     fontSize: 10,
